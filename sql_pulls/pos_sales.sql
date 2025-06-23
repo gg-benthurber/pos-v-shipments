@@ -1,11 +1,20 @@
-WITH items AS (
+WITH date_bounds AS (
+    SELECT 
+        -- Set end_date to most recent Sunday (yesterday if today is Monday)
+        DATEADD(DAY, -DAYOFWEEK(CURRENT_DATE()), CURRENT_DATE()) AS end_date,
+
+        -- Set start_date to the Monday 52 weeks before that Sunday
+        DATEADD(WEEK, -52, DATEADD(DAY, 1, DATEADD(DAY, -DAYOFWEEK(CURRENT_DATE()), CURRENT_DATE()))) AS start_date
+),
+
+items AS (
     SELECT DISTINCT 
         ITEM_NUMBER,
         PRODUCTLINE,
         PRODUCTTYPE,
         PRODUCTVARIANT,
         PRODUCTFORM
-    FROM POS_TEST_DB.SCH_ORACLE.ORACLE_ITEM
+    FROM POS_TEST_DB.SCH_ORACLE.BI_ITEM
     WHERE 
         UPPER(BRAND) = 'OKEEFFES'
         AND ENTITY = 'The Gorilla Glue Company LLC'
@@ -13,26 +22,32 @@ WITH items AS (
 ),
 base_data AS (
     SELECT 
-        iw."Customer" AS customer,
+        CASE 
+            WHEN iw."Customer" IN ('KROGER', 'FRED MEYER') THEN 'KROGER'
+            ELSE iw."Customer"
+        END AS customer,
         i.PRODUCTLINE,
         i.PRODUCTTYPE,
         i.PRODUCTVARIANT,
         i.PRODUCTFORM,
-        "Updated Week Ending Date",
+        iw."Updated Week Ending Date",
         SUM(iw."POS Units") AS units,
         SUM(iw."POS Dollars") AS sales
     FROM POS_TEST_DB.SCH_SUMMARY.POS_ITEMWEEKLY_XCHANGE_VIEW iw
     INNER JOIN items i
         ON i.ITEM_NUMBER = iw."Part Number"
-    WHERE 
-        iw."Updated Week Ending Date" BETWEEN DATE '2024-04-21' AND DATE '2025-04-20'
+    JOIN date_bounds db
+        ON iw."Updated Week Ending Date" BETWEEN db.start_date AND db.end_date
     GROUP BY 
-        iw."Customer",
+        CASE 
+            WHEN iw."Customer" IN ('KROGER', 'FRED MEYER') THEN 'KROGER'
+            ELSE iw."Customer"
+        END,
         i.PRODUCTLINE,
         i.PRODUCTTYPE,
         i.PRODUCTVARIANT,
         i.PRODUCTFORM,
-        "Updated Week Ending Date"
+        iw."Updated Week Ending Date"
 ),
 customer_totals AS (
     SELECT 
